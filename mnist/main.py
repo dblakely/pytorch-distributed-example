@@ -11,7 +11,6 @@ from torchvision import datasets, transforms
 
 
 class Average(object):
-
     def __init__(self):
         self.sum = 0
         self.count = 0
@@ -29,7 +28,6 @@ class Average(object):
 
 
 class Accuracy(object):
-
     def __init__(self):
         self.correct = 0
         self.count = 0
@@ -50,7 +48,6 @@ class Accuracy(object):
 
 
 class Trainer(object):
-
     def __init__(self, net, optimizer, train_loader, test_loader, device):
         self.net = net
         self.optimizer = optimizer
@@ -83,8 +80,6 @@ class Trainer(object):
 
             self.optimizer.zero_grad()
             loss.backward()
-            # average the gradients
-            self.average_gradients()
             self.optimizer.step()
 
             train_loss.update(loss.item(), data.size(0))
@@ -111,16 +106,8 @@ class Trainer(object):
 
         return test_loss, test_acc
 
-    def average_gradients(self):
-        world_size = distributed.get_world_size()
-
-        for p in self.net.parameters():
-            distributed.all_reduce(p.grad.data, op=distributed.reduce_op.SUM)
-            p.grad.data /= float(world_size)
-
 
 class Net(nn.Module):
-
     def __init__(self):
         super(Net, self).__init__()
         self.fc = nn.Linear(784, 10)
@@ -132,7 +119,7 @@ class Net(nn.Module):
 def get_dataloader(root, batch_size):
     transform = transforms.Compose(
         [transforms.ToTensor(),
-         transforms.Normalize((0.1307,), (0.3081,))])
+         transforms.Normalize((0.1307, ), (0.3081, ))])
 
     train_set = datasets.MNIST(
         root, train=True, transform=transform, download=True)
@@ -153,10 +140,15 @@ def get_dataloader(root, batch_size):
 
 
 def run(args):
-    device = torch.device(
-        'cuda' if torch.cuda.is_available() and not args.no_cuda else 'cpu')
+    use_cuda = torch.cuda.is_available() and not args.no_cuda
+    device = torch.device('cuda' if use_cuda else 'cpu')
 
     net = Net().to(device)
+    if torch.distributed.is_available():
+        if use_cuda:
+            net = torch.nn.parallel.DistributedDataParallel()
+        else:
+            net = torch.nn.parallel.DistributedDataParallelCPU(net)
 
     optimizer = torch.optim.Adam(net.parameters(), lr=args.learning_rate)
 

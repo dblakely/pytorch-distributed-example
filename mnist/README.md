@@ -1,5 +1,9 @@
 # MNIST Example
 
+Choosing the network interface to use
+https://pytorch.org/docs/stable/distributed.html#choosing-the-network-interface-to-use
+
+
 Rank 0
 ```
 $ python3 main.py --init-method tcp://127.0.0.1:23456 --rank 0 --world-size 3
