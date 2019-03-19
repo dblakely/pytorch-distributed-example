@@ -146,7 +146,7 @@ def run(args):
     net = Net().to(device)
     if torch.distributed.is_available():
         if use_cuda:
-            net = torch.nn.parallel.DistributedDataParallel()
+            net = torch.nn.parallel.DistributedDataParallel(net)
         else:
             net = torch.nn.parallel.DistributedDataParallelCPU(net)
 
