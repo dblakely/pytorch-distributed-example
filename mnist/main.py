@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from torch import distributed, nn
 from torch.utils import data
 from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data import BatchSampler
 from torchvision import datasets, transforms
 import cProfile
 
@@ -52,12 +53,13 @@ class Accuracy(object):
 
 class Trainer(object):
 
-    def __init__(self, net, optimizer, train_loader, test_loader, device):
+    def __init__(self, net, optimizer, train_loader, test_loader, device, distributed):
         self.net = net
         self.optimizer = optimizer
         self.train_loader = train_loader
         self.test_loader = test_loader
         self.device = device
+        self.distributed = distributed
 
     def fit(self, epochs):
         for epoch in range(1, epochs + 1):
@@ -85,7 +87,8 @@ class Trainer(object):
             self.optimizer.zero_grad()
             loss.backward()
             # average the gradients
-            self.average_gradients()
+            if (self.distributed):
+                self.average_gradients()
             self.optimizer.step()
 
             train_loss.update(loss.item(), data.size(0))
@@ -140,7 +143,7 @@ class Net(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def get_dataloader(root, batch_size):
+def get_dataloader(root, batch_size, world_size):
     print("Getting data loader with root = {}".format(root))
     transform = transforms.Compose(
         [transforms.ToTensor(),
@@ -148,13 +151,19 @@ def get_dataloader(root, batch_size):
 
     train_set = datasets.MNIST(
         root, train=True, transform=transform, download=True)
-    sampler = DistributedSampler(train_set)
+    if world_size == 1:
+        train_loader = data.DataLoader(
+            train_set,
+            batch_size=batch_size,
+            shuffle=True)
+    else:
+        sampler = DistributedSampler(train_set)
+        train_loader = data.DataLoader(
+            train_set,
+            batch_size=batch_size,
+            shuffle=(sampler is None),
+            sampler=sampler)
 
-    train_loader = data.DataLoader(
-        train_set,
-        batch_size=batch_size,
-        shuffle=(sampler is None),
-        sampler=sampler)
 
     test_loader = data.DataLoader(
         datasets.MNIST(root, train=False, transform=transform, download=True),
@@ -173,11 +182,12 @@ def run(args):
 
     optimizer = torch.optim.Adam(net.parameters(), lr=args.learning_rate)
 
-    train_loader, test_loader = get_dataloader(args.root, args.batch_size)
+    train_loader, test_loader = get_dataloader(args.root, args.batch_size, args.world_size)
 
     print("obtained data_loader")
 
-    trainer = Trainer(net, optimizer, train_loader, test_loader, device)
+    distributed = False if args.world_size == 1 else True
+    trainer = Trainer(net, optimizer, train_loader, test_loader, device, distributed)
     trainer.fit(args.epochs)
 
 
@@ -218,7 +228,8 @@ def main():
     args = parser.parse_args()
     print(args)
 
-    init_process(args)
+    if (args.world_size != 1):
+        init_process(args)
     run(args)
 
 
