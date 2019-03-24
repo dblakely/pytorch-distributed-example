@@ -53,18 +53,22 @@ class Accuracy(object):
 
 class Trainer(object):
 
-    def __init__(self, net, optimizer, train_loader, test_loader, device, distributed):
+    def __init__(self, net, optimizer, train_loader, test_loader, device, distributed, do_eval):
         self.net = net
         self.optimizer = optimizer
         self.train_loader = train_loader
         self.test_loader = test_loader
         self.device = device
         self.distributed = distributed
+        self.do_eval = do_eval
 
     def fit(self, epochs):
         for epoch in range(1, epochs + 1):
             train_loss, train_acc = self.train()
-            test_loss, test_acc = self.evaluate()
+            if (self.do_eval or epoch == epochs):
+                test_loss, test_acc = self.evaluate()
+            else:
+                test_loss, test_acc = 0, 0
 
             print(
                 'Epoch: {}/{},'.format(epoch, epochs),
@@ -187,7 +191,7 @@ def run(args):
     print("obtained data_loader")
 
     distributed = False if args.world_size == 1 else True
-    trainer = Trainer(net, optimizer, train_loader, test_loader, device, distributed)
+    trainer = Trainer(net, optimizer, train_loader, test_loader, device, distributed, args.eval)
     trainer.fit(args.epochs)
 
 
@@ -225,6 +229,7 @@ def main():
     parser.add_argument('--learning-rate', '-lr', type=float, default=1e-3)
     parser.add_argument('--root', type=str, default='data')
     parser.add_argument('--batch-size', type=int, default=128)
+    parser.add_argument('--eval', action='store_true', default=False)
     args = parser.parse_args()
     print(args)
 
