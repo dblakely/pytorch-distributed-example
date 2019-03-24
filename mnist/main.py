@@ -8,6 +8,7 @@ from torch import distributed, nn
 from torch.utils import data
 from torch.utils.data.distributed import DistributedSampler
 from torchvision import datasets, transforms
+import cProfile
 
 
 class Average(object):
@@ -123,13 +124,24 @@ class Net(nn.Module):
 
     def __init__(self):
         super(Net, self).__init__()
-        self.fc = nn.Linear(784, 10)
+        self.conv1 = nn.Conv2d(1, 20, 5, 1)
+        self.conv2 = nn.Conv2d(20, 50, 5, 1)
+        self.fc1 = nn.Linear(4*4*50, 500)
+        self.fc2 = nn.Linear(500, 10)
 
     def forward(self, x):
-        return self.fc(x.view(x.size(0), -1))
+        x = F.relu(self.conv1(x))
+        x = F.max_pool2d(x, 2, 2)
+        x = F.relu(self.conv2(x))
+        x = F.max_pool2d(x, 2, 2)
+        x = x.view(-1, 4*4*50)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return F.log_softmax(x, dim=1)
 
 
 def get_dataloader(root, batch_size):
+    print("Getting data loader with root = {}".format(root))
     transform = transforms.Compose(
         [transforms.ToTensor(),
          transforms.Normalize((0.1307,), (0.3081,))])
@@ -155,12 +167,15 @@ def get_dataloader(root, batch_size):
 def run(args):
     device = torch.device(
         'cuda' if torch.cuda.is_available() and not args.no_cuda else 'cpu')
+    print("device = {}".format(device))
 
     net = Net().to(device)
 
     optimizer = torch.optim.Adam(net.parameters(), lr=args.learning_rate)
 
     train_loader, test_loader = get_dataloader(args.root, args.batch_size)
+
+    print("obtained data_loader")
 
     trainer = Trainer(net, optimizer, train_loader, test_loader, device)
     trainer.fit(args.epochs)
@@ -172,6 +187,7 @@ def init_process(args):
         init_method=args.init_method,
         rank=args.rank,
         world_size=args.world_size)
+    print("called init_process_group")
 
 
 def main():
@@ -207,4 +223,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    cProfile.run('main()', 'stats')
