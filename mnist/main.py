@@ -153,7 +153,7 @@ def get_dataloader(root, batch_size, world_size):
         [transforms.ToTensor(),
          transforms.Normalize((0.1307,), (0.3081,))])
 
-    train_set = datasets.MNIST(
+    train_set = datasets.FashionMNIST(
         root, train=True, transform=transform, download=True)
     if world_size == 1:
         train_loader = data.DataLoader(
@@ -208,8 +208,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--backend',
-        type=str,
-        default='gloo',
+        type=str,x
+        default='nccl',
         help='Name of the backend to use.')
     parser.add_argument(
         '-i',
